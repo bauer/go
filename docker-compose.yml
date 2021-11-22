@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  example:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    cap_add:
+      - SYS_PTRACE
+    image: example:latest
+    container_name: go-example-container
+    hostname: go-example-host
+    ports:
+      - "2345:2345"

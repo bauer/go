@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+
+#----------------------------------------------------------
+#       build and run configuration in single image
+#----------------------------------------------------------
+FROM golang:buster AS build
+
+# install debugger
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+# set the current directory inside image
+WORKDIR /work
+
+# copy files required for go build to current directory
+COPY go.mod ./
+COPY go.sum ./
+RUN go mod download
+COPY Makefile ./
+COPY /src ./src
+
+# build with make (or use RUN go build -gcflags="-N -l" -o ./bin/example ./src/main.go)
+RUN make build
+
+# run executable with debugger
+WORKDIR /
+EXPOSE 2345
+CMD ["/go/bin/dlv", "--listen=:2345", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "/work/bin/example"]

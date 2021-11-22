@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1
+
+#----------------------------------------------------------
+#   build configuration executable
+#----------------------------------------------------------
+FROM golang:buster AS build
+
+# install debugger
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+# set the current directory inside image
+WORKDIR /work
+
+# copy files required for go build to current directory
+COPY go.mod ./
+COPY go.sum ./
+RUN go mod download
+COPY Makefile ./
+COPY /src ./src
+
+# build with make (or use RUN go build -gcflags="-N -l" -o ./bin/example ./src/main.go)
+RUN make build
+
+#----------------------------------------------------------
+#   build configuration debugger
+#----------------------------------------------------------
+FROM golang:1.13-alpine AS debug
+# adding git is a must for `go get` to work
+RUN apk add --no-cache git
+RUN go get github.com/go-delve/delve/cmd/dlv
+
+#----------------------------------------------------------
+#   deploy configuration
+#----------------------------------------------------------
+FROM alpine:latest
+
+# debug configuration for nonroot user
+ENV XDG_CONFIG_HOME=/debug
+RUN mkdir /debug
+RUN chmod ugo+rwx /debug
+
+# set the current directory inside image
+WORKDIR /usr/local/bin
+
+# copy executable and debugger from build step
+COPY --from=build /work/bin/example ./
+COPY --from=debug /go/bin/dlv ./
+
+RUN apk --update --no-cache upgrade \
+    && apk add --no-cache ca-certificates \
+    && addgroup -S 007 \
+    && adduser -D -S -G 007 007
+
+# nonroot user without write access in home folder
+USER 007:007
+
+EXPOSE 2345
+CMD ["dlv", "--listen=:2345", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "example"]
